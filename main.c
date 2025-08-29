@@ -13,6 +13,8 @@
 #define DEFAULT_PORT "27015"
 #define DEFAULT_BUFLEN 8
 
+#include <string.h>
+
 int main(int argc, char *argv[])
 {
     // Ignore the errors.
@@ -38,7 +40,6 @@ int main(int argc, char *argv[])
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags = AI_PASSIVE;
-
 
     // Resolve the local address and port to be used by the server
     iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result);
@@ -100,25 +101,55 @@ int main(int argc, char *argv[])
 
     int bytesRead;
 
+    int maxRequestSize = 7000;
+    char *request = malloc(maxRequestSize);
+    ZeroMemory(request, maxRequestSize);
+    int requestCurLen = 0;
 
     do {
         buffer[DEFAULT_BUFLEN + 1] = '\0';
         bytesRead = recv(clientSocket, buffer, DEFAULT_BUFLEN, 0);
 
+        if ((requestCurLen + bytesRead) < maxRequestSize) {
+            // Copy to the request buffer
+            strncpy(request + requestCurLen, buffer, bytesRead);
+            requestCurLen += bytesRead;
+        }
+
         if (bytesRead > 0) {
-            printf("%s", buffer);
-        }
-        else if (bytesRead == 0) {
-            printf("\n");
-        }
-        else { 
+            // printf("%s", buffer);
+        } else if (bytesRead == 0) {
+        } else {
             printf("\nrecv failed: %d\n", WSAGetLastError());
             closesocket(clientSocket);
             WSACleanup();
             return 1;
         }
-        
+
+        if (strncmp(request + requestCurLen - 4, "\r\n\r\n", 4) == 0) {
+            printf("End of string\n");
+            for (int i = 8; i > 0; i--) {
+                printf("%d ", request[requestCurLen - i]);
+            }
+            break;
+        }
+
     } while (bytesRead > 0);
+
+    request[requestCurLen + 1] = '\0';
+    printf("Bytes read : %d\n", requestCurLen);
+
+    // for (int i = 8; i > 0; i--) {
+    //     printf("%c", request[requestCurLen - i]);
+    // }
+    //
+
+    char * response = "HTTP/1.1 200 OK\r\n\r\nHello!";
+
+    send(clientSocket,response,strlen(response),0);
+
+    printf("%s", request);
+    free(request);
 
     // Close the socket and send a FIN
     iResult = shutdown(clientSocket, SD_SEND);
@@ -129,7 +160,6 @@ int main(int argc, char *argv[])
         WSACleanup();
         return 1;
     }
-
 
     // cleanup
     closesocket(clientSocket);
