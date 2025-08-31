@@ -13,10 +13,26 @@
 #define DEFAULT_PORT "27015"
 #define DEFAULT_BUFLEN 8
 
+#include <signal.h>
 #include <string.h>
+
+// If there's a chance of errors make it so they can be freed on a SIGINT
+static char *request = NULL;
+
+enum RequestType { UNSET, GET, POST };
+
+void signalHandler(int sig)
+{
+    printf("Caught signal %d\n", sig);
+    free(request);
+    exit(0);
+}
 
 int main(int argc, char *argv[])
 {
+
+    signal(SIGINT, signalHandler);
+
     // Ignore the errors.
     // clang doesn't parse the types in windows headers very well
 
@@ -87,6 +103,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // Beginning of clientSocket code
+
     SOCKET clientSocket = accept(listenSocket, NULL, NULL);
     if (clientSocket == INVALID_SOCKET) {
         printf("accept failed: %d\n", WSAGetLastError());
@@ -102,7 +120,7 @@ int main(int argc, char *argv[])
     int bytesRead;
 
     int maxRequestSize = 7000;
-    char *request = malloc(maxRequestSize);
+    request = malloc(maxRequestSize);
     ZeroMemory(request, maxRequestSize);
     int requestCurLen = 0;
 
@@ -127,10 +145,6 @@ int main(int argc, char *argv[])
         }
 
         if (strncmp(request + requestCurLen - 4, "\r\n\r\n", 4) == 0) {
-            printf("End of string\n");
-            for (int i = 8; i > 0; i--) {
-                printf("%d ", request[requestCurLen - i]);
-            }
             break;
         }
 
@@ -139,16 +153,59 @@ int main(int argc, char *argv[])
     request[requestCurLen + 1] = '\0';
     printf("Bytes read : %d\n", requestCurLen);
 
-    // for (int i = 8; i > 0; i--) {
-    //     printf("%c", request[requestCurLen - i]);
-    // }
-    //
+    // Variables about the request metadata
+    enum RequestType requestType = UNSET;
+    char pathname[400] = "./";
 
-    char * response = "HTTP/1.1 200 OK\r\n\r\nHello!";
+    char *token = strtok(request, " ");
+    int tokenNo = 0;
+    while (token != NULL) {
+        token = strtok(NULL, " ");
+        // Process the stuff based on index.
+        switch (tokenNo) {
+        case 0:
+            if (strncmp(token, "GET", 3) != 0 && tokenNo == 0) {
+                requestType = GET;
+            }
+        case 1:
+            strncat(pathname, token, sizeof(pathname) - 1);
+        }
 
-    send(clientSocket,response,strlen(response),0);
+        tokenNo++;
+    }
 
-    printf("%s", request);
+    char *response = "HTTP/1.1 200 OK\r\n\r\nHello!";
+
+    if (requestType == GET) {
+        int fileSize = 0;
+        // Determine if it's a valid thing ---------------#
+        
+        // Make sure that it contains no .. 
+        if (strstr(pathname, "..") != NULL) {
+            // Return a 404 error
+        } 
+
+        // Check if the file exists
+        
+        FILE *fptr = fopen(pathname, "rb");
+
+        if (fptr != NULL) {
+            
+        }
+        else {
+            // Return a 404 error
+        }
+
+        // Read the file ---------------------------------#
+
+        fclose(fptr);
+
+        // Construct the header --------------------------#
+
+        // Stream the file -------------------------------#
+    }
+    send(clientSocket, response, strlen(response), 0);
+
     free(request);
 
     // Close the socket and send a FIN
@@ -163,6 +220,8 @@ int main(int argc, char *argv[])
 
     // cleanup
     closesocket(clientSocket);
+
+    // End of client Socket code
     WSACleanup();
 
     return 0;
