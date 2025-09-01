@@ -1,3 +1,4 @@
+#include <windef.h>
 #define WIN32_LEAN_AND_MEAN
 
 #include <stdio.h>
@@ -155,56 +156,90 @@ int main(int argc, char *argv[])
 
     // Variables about the request metadata
     enum RequestType requestType = UNSET;
-    char pathname[400] = "./";
+    char pathname[400] = ".";
 
     char *token = strtok(request, " ");
     int tokenNo = 0;
     while (token != NULL) {
-        token = strtok(NULL, " ");
         // Process the stuff based on index.
         switch (tokenNo) {
         case 0:
-            if (strncmp(token, "GET", 3) != 0 && tokenNo == 0) {
+            if (strncmp(token, "GET", 3) == 0) {
                 requestType = GET;
             }
+            break;
         case 1:
             strncat(pathname, token, sizeof(pathname) - 1);
+            break;
+        defaut:
+            break;
         }
-
+        token = strtok(NULL, " ");
         tokenNo++;
     }
 
-    char *response = "HTTP/1.1 200 OK\r\n\r\nHello!";
+    printf("pathname : %s\n", pathname);
+
+    int headerSize = 4000;
+    char header[headerSize];
 
     if (requestType == GET) {
-        int fileSize = 0;
+
+        int validRequest = TRUE;
+
+        // Metadata
+        long fileSize = 0;
+        char fileType[32] = "text/html"; // Default
         // Determine if it's a valid thing ---------------#
-        
-        // Make sure that it contains no .. 
+
+        // Make sure that it contains no ..
         if (strstr(pathname, "..") != NULL) {
             // Return a 404 error
-        } 
+            validRequest = FALSE;
+        }
 
         // Check if the file exists
-        
+
         FILE *fptr = fopen(pathname, "rb");
 
         if (fptr != NULL) {
-            
-        }
-        else {
+            fseek(fptr, 0, SEEK_END);
+            fileSize = ftell(fptr);
+            fseek(fptr, 0, SEEK_SET);
+            // Also figure out the file type
+        } else {
             // Return a 404 error
+            validRequest = FALSE;
         }
 
         // Read the file ---------------------------------#
+
+        char *fileInMem = malloc(fileSize + 10);
+
+        fread(fileInMem, fileSize, 1, fptr);
+
+        strcpy(fileInMem + fileSize, "\r\n\r\n\0");
 
         fclose(fptr);
 
         // Construct the header --------------------------#
 
+        snprintf(header, headerSize,
+                 "HTTP/1.1 200 OK\r\n"
+                 "Content-Type: %s\r\n"
+                 "Content-Length: %ld\r\n"
+                 "Connection: keep-alive\r\n"
+                 "\r\n",
+                 fileType, fileSize);
+
         // Stream the file -------------------------------#
+
+        send(clientSocket, header, strlen(header), 0);
+
+        send(clientSocket, fileInMem, strlen(fileInMem), 0);
+
+        free(fileInMem);
     }
-    send(clientSocket, response, strlen(response), 0);
 
     free(request);
 
@@ -220,8 +255,8 @@ int main(int argc, char *argv[])
 
     // cleanup
     closesocket(clientSocket);
-
     // End of client Socket code
+
     WSACleanup();
 
     return 0;
