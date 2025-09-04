@@ -18,10 +18,10 @@
 #include <signal.h>
 #include <string.h>
 
-
-static int stayup = TRUE;
-
 enum RequestType { UNSET, GET, POST };
+
+// The program runs while this is true
+static int stayup = TRUE;
 
 void signalHandler(int sig)
 {
@@ -30,10 +30,28 @@ void signalHandler(int sig)
     exit(0);
 }
 
+#define MAXTHREADS 30
+static int activeThreads[MAXTHREADS]; // TRUE is active and FALSE is not
+static int threadData[MAXTHREADS]; // Thread data needs to be passea as pointers
+                                   // to the function
+static SOCKET activeSockets[MAXTHREADS]; // 1 client socket per thread
+
+// This will be where the request will be handled in
+// a separate thread `threadID`` will be used to access
+// both the thread and the socket
+DWORD WINAPI requestHandler(void *arg);
+
 int main(int argc, char *argv[])
 {
 
+    // Non-Network Initialization
     signal(SIGINT, signalHandler);
+
+    for (int i = 0; i < MAXTHREADS; i++) {
+        activeThreads[i] = FALSE;
+    }
+
+    HANDLE threadArray[MAXTHREADS];
 
     // Ignore the errors.
     // clang doesn't parse the types in windows headers very well
@@ -104,120 +122,159 @@ int main(int argc, char *argv[])
             stayup = FALSE;
         }
 
-        // Beginning of clientSocket code
+        // Create a new thread and pass the threadID
 
-        SOCKET clientSocket = accept(listenSocket, NULL, NULL);
-        if (clientSocket == INVALID_SOCKET) {
-            printf("accept failed: %d\n", WSAGetLastError());
+        int nextActiveThread = 1;
+        while (TRUE) {
+            if (nextActiveThread == 30) {
+                nextActiveThread = 0;
+            }
+            if (activeThreads[nextActiveThread] == FALSE) {
+                break;
+            }
+
+            nextActiveThread++;
+        }
+
+        activeThreads[nextActiveThread] = TRUE;
+        activeSockets[nextActiveThread] = accept(listenSocket, NULL, NULL);
+        threadData[nextActiveThread] = nextActiveThread;
+
+        threadArray[nextActiveThread] = CreateThread(
+            NULL, 0, requestHandler, &threadData[nextActiveThread], 0, NULL);
+    }
+
+    freeaddrinfo(result);
+
+    closesocket(listenSocket);
+
+    WaitForMultipleObjects(MAXTHREADS, threadArray, TRUE, INFINITE);
+
+    WSACleanup();
+
+    return 0;
+}
+
+DWORD WINAPI requestHandler(void *arg)
+{
+    int threadID = *(int *)arg;
+    printf("Started thread with ID : %d\n", threadID);
+    SOCKET clientSocket = activeSockets[threadID];
+    // Beginning of clientSocket code
+    if (clientSocket == INVALID_SOCKET) {
+        printf("accept failed: %d\n", WSAGetLastError());
+        stayup = FALSE;
+    }
+
+    char buffer[DEFAULT_BUFLEN + 1];
+
+    int bytesRead;
+
+    int maxRequestSize = 7000;
+    char *request = malloc(maxRequestSize);
+    ZeroMemory(request, maxRequestSize);
+    int requestCurLen = 0;
+
+    do {
+        buffer[DEFAULT_BUFLEN + 1] = '\0';
+        bytesRead = recv(clientSocket, buffer, DEFAULT_BUFLEN, 0);
+
+        if ((requestCurLen + bytesRead) < maxRequestSize) {
+            // Copy to the request buffer
+            strncpy(request + requestCurLen, buffer, bytesRead);
+            requestCurLen += bytesRead;
+        }
+
+        if (bytesRead > 0) {
+            // printf("%s", buffer);
+        } else if (bytesRead == 0) {
+        } else {
+            printf("\nrecv failed: %d\n", WSAGetLastError());
             stayup = FALSE;
         }
 
-        // closesocket(listenSocket);
-
-        char buffer[DEFAULT_BUFLEN + 1];
-
-        int bytesRead;
-
-        int maxRequestSize = 7000;
-        char * request = malloc(maxRequestSize);
-        ZeroMemory(request, maxRequestSize);
-        int requestCurLen = 0;
-
-        do {
-            buffer[DEFAULT_BUFLEN + 1] = '\0';
-            bytesRead = recv(clientSocket, buffer, DEFAULT_BUFLEN, 0);
-
-            if ((requestCurLen + bytesRead) < maxRequestSize) {
-                // Copy to the request buffer
-                strncpy(request + requestCurLen, buffer, bytesRead);
-                requestCurLen += bytesRead;
-            }
-
-            if (bytesRead > 0) {
-                // printf("%s", buffer);
-            } else if (bytesRead == 0) {
-            } else {
-                printf("\nrecv failed: %d\n", WSAGetLastError());
-                stayup = FALSE;
-            }
-
-            if (strncmp(request + requestCurLen - 4, "\r\n\r\n", 4) == 0) {
-                break;
-            }
-
-        } while (bytesRead > 0);
-
-        request[requestCurLen + 1] = '\0';
-
-        // Variables about the request metadata
-        enum RequestType requestType = UNSET;
-        char pathname[400] = ".";
-
-        char *token = strtok(request, " ");
-        int tokenNo = 0;
-        while (token != NULL) {
-            // Process the stuff based on index.
-            switch (tokenNo) {
-            case 0:
-                if (strncmp(token, "GET", 3) == 0) {
-                    requestType = GET;
-                }
-                break;
-            case 1:
-                strncat(pathname, token, sizeof(pathname) - 1);
-                break;
-            defaut:
-                break;
-            }
-            token = strtok(NULL, " ");
-            tokenNo++;
+        if (strncmp(request + requestCurLen - 4, "\r\n\r\n", 4) == 0) {
+            break;
         }
 
+    } while (bytesRead > 0);
 
-        int headerSize = 4000;
-        char header[headerSize];
+    request[requestCurLen + 1] = '\0';
 
-        if (requestType == GET) {
+    // Variables about the request metadata
+    enum RequestType requestType = UNSET;
+    char pathname[400] = ".";
 
-            int validRequest = TRUE;
-
-            // Metadata
-            long fileSize = 0;
-            char fileType[32] = "text/html"; // Default
-            // Determine if it's a valid thing ---------------#
-
-            // Make sure that it contains no ..
-            if (strstr(pathname, "..") != NULL) {
-                // Return a 404 error
-                validRequest = FALSE;
+    char *token = strtok(request, " ");
+    int tokenNo = 0;
+    while (token != NULL) {
+        // Process the stuff based on index.
+        switch (tokenNo) {
+        case 0:
+            if (strncmp(token, "GET", 3) == 0) {
+                requestType = GET;
             }
+            break;
+        case 1:
+            strncat(pathname, token, sizeof(pathname) - 1);
+            break;
+        defaut:
+            break;
+        }
+        token = strtok(NULL, " ");
+        tokenNo++;
+    }
 
-            // Check if the file exists
+    int headerSize = 4000;
+    char header[headerSize];
 
-            FILE *fptr = fopen(pathname, "rb");
+    if (requestType == GET) {
 
-            if (fptr != NULL) {
-                fseek(fptr, 0, SEEK_END);
-                fileSize = ftell(fptr);
-                fseek(fptr, 0, SEEK_SET);
-                // Also figure out the file type
-            } else {
-                // Return a 404 error
-                validRequest = FALSE;
-            }
+        int validRequest = TRUE;
 
-            // Read the file ---------------------------------#
+        // Metadata
+        long fileSize = 0;
+        char fileType[32] = "text/html"; // Default
+        // Determine if it's a valid thing ---------------#
 
-            char *fileInMem = malloc(fileSize + 10);
+        // Make sure that it contains no ..
+        if (strstr(pathname, "..") != NULL) {
+            // Return a 404 error
+            validRequest = FALSE;
+        }
 
-            fread(fileInMem, fileSize, 1, fptr);
+        // Edits to the string
+        if (pathname[strlen(pathname) - 1] == '/') {
+            strncat(pathname, "index.html", sizeof(pathname) - 1);
+        }
 
-            strcpy(fileInMem + fileSize, "\r\n\r\n\0");
+        // Check if the file exists
 
-            fclose(fptr);
+        FILE *fptr = fopen(pathname, "rb");
 
-            // Construct the header --------------------------#
+        if (fptr != NULL) {
+            fseek(fptr, 0, SEEK_END);
+            fileSize = ftell(fptr);
+            fseek(fptr, 0, SEEK_SET);
+            // Also figure out the file type
+        } else {
+            // Return a 404 error
+            validRequest = FALSE;
+        }
 
+        // Read the file ---------------------------------#
+
+        char *fileInMem = malloc(fileSize + 10);
+
+        fread(fileInMem, fileSize, 1, fptr);
+
+        strcpy(fileInMem + fileSize, "\r\n\r\n\0");
+
+        fclose(fptr);
+
+        // Construct the header --------------------------#
+
+        if (validRequest) {
             snprintf(header, headerSize,
                      "HTTP/1.1 200 OK\r\n"
                      "Content-Type: %s\r\n"
@@ -225,41 +282,41 @@ int main(int argc, char *argv[])
                      "Connection: keep-alive\r\n"
                      "\r\n",
                      fileType, fileSize);
-
-            // Stream the file -------------------------------#
-
-            send(clientSocket, header, strlen(header), 0);
-
-            send(clientSocket, fileInMem, strlen(fileInMem), 0);
-
-            free(fileInMem);
-            free(request);
-
+        }
+        else {
+            snprintf(header, headerSize,
+                     "HTTP/1.1 404 Not Found\r\n"
+                     "Content-Type: %s\r\n"
+                     "Content-Length: %ld\r\n"
+                     "Connection: keep-alive\r\n"
+                     "\r\n",
+                     fileType, fileSize);
         }
 
-        // Close the socket and send a FIN
-        iResult = shutdown(clientSocket, SD_SEND);
+        // Stream the file -------------------------------#
 
-        if (iResult == SOCKET_ERROR) {
-            printf("shutdown failed %d\n", WSAGetLastError());
-            stayup = FALSE;
-        }
+        send(clientSocket, header, strlen(header), 0);
 
-        // cleanup
-        closesocket(clientSocket);
-        // End of client Socket code
+        send(clientSocket, fileInMem, strlen(fileInMem), 0);
+
+        free(fileInMem);
+        free(request);
     }
 
-    // Probably best to put this in an array of memory thingies and make it so
-    // All get freed when they are done
-    // Kinda looks like there might be race condition
-    // This is for request and fileInMem
+    // Close the socket and send a FIN
+    int iResult = shutdown(clientSocket, SD_SEND);
 
-    freeaddrinfo(result);
+    if (iResult == SOCKET_ERROR) {
+        printf("shutdown failed %d\n", WSAGetLastError());
+        stayup = FALSE;
+    }
 
-    closesocket(listenSocket);
+    // cleanup
+    closesocket(clientSocket);
+    // End of client Socket code
 
-    WSACleanup();
-
+    // This might be a race condition
+    activeThreads[threadID] = FALSE;
+    printf("Exiting thread %d\n", threadID);
     return 0;
 }
