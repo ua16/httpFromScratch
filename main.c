@@ -248,6 +248,8 @@ DWORD WINAPI requestHandler(void *arg)
             strncat(pathname, "index.html", sizeof(pathname) - 1);
         }
 
+        // Check the types
+
         // Check if the file exists
 
         FILE *fptr = fopen(pathname, "rb");
@@ -264,11 +266,11 @@ DWORD WINAPI requestHandler(void *arg)
 
         // Read the file ---------------------------------#
 
-        char *fileInMem = malloc(fileSize + 10);
+        char *fileInMem = malloc(fileSize + 10); // This will be an unterminated string
 
         fread(fileInMem, fileSize, 1, fptr);
 
-        strcpy(fileInMem + fileSize, "\r\n\r\n\0");
+        strcpy(fileInMem + fileSize, "\r\n\r\n");
 
         fclose(fptr);
 
@@ -279,16 +281,16 @@ DWORD WINAPI requestHandler(void *arg)
                      "HTTP/1.1 200 OK\r\n"
                      "Content-Type: %s\r\n"
                      "Content-Length: %ld\r\n"
-                     "Connection: keep-alive\r\n"
+                     "Connection: close\r\n"
                      "\r\n",
-                     fileType, fileSize);
+                     fileType, fileSize + 4);
         }
         else {
             snprintf(header, headerSize,
                      "HTTP/1.1 404 Not Found\r\n"
                      "Content-Type: %s\r\n"
                      "Content-Length: %ld\r\n"
-                     "Connection: keep-alive\r\n"
+                     "Connection: close\r\n"
                      "\r\n",
                      fileType, fileSize);
         }
