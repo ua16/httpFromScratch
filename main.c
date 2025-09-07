@@ -18,6 +18,8 @@
 #include <signal.h>
 #include <string.h>
 
+#include "funcs.h"
+
 enum RequestType { UNSET, GET, POST };
 
 // The program runs while this is true
@@ -234,7 +236,7 @@ DWORD WINAPI requestHandler(void *arg)
 
         // Metadata
         long fileSize = 0;
-        char fileType[32] = "text/html"; // Default
+        char fileType[32] = "image/bmp"; // Default
         // Determine if it's a valid thing ---------------#
 
         // Make sure that it contains no ..
@@ -248,7 +250,7 @@ DWORD WINAPI requestHandler(void *arg)
             strncat(pathname, "index.html", sizeof(pathname) - 1);
         }
 
-        // Check the types
+        // Check the file types
 
         // Check if the file exists
 
@@ -266,7 +268,8 @@ DWORD WINAPI requestHandler(void *arg)
 
         // Read the file ---------------------------------#
 
-        char *fileInMem = malloc(fileSize + 10); // This will be an unterminated string
+        char *fileInMem =
+            malloc(fileSize + 10); // This will be an unterminated string
 
         fread(fileInMem, fileSize, 1, fptr);
 
@@ -281,11 +284,10 @@ DWORD WINAPI requestHandler(void *arg)
                      "HTTP/1.1 200 OK\r\n"
                      "Content-Type: %s\r\n"
                      "Content-Length: %ld\r\n"
-                     "Connection: close\r\n"
+                     "Connection: Keep-Alive\r\n"
                      "\r\n",
                      fileType, fileSize + 4);
-        }
-        else {
+        } else {
             snprintf(header, headerSize,
                      "HTTP/1.1 404 Not Found\r\n"
                      "Content-Type: %s\r\n"
@@ -299,7 +301,8 @@ DWORD WINAPI requestHandler(void *arg)
 
         send(clientSocket, header, strlen(header), 0);
 
-        send(clientSocket, fileInMem, strlen(fileInMem), 0);
+        
+        send(clientSocket, fileInMem, fileSize, 0);
 
         free(fileInMem);
         free(request);
