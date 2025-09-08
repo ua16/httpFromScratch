@@ -1,6 +1,6 @@
 
 all:
-	gcc.exe -static main.c -o main.exe -lws2_32
+	gcc.exe -static main.c funcs.c -o main.exe -lws2_32
 
 # Compiling the example code from MS docs
 # example:
