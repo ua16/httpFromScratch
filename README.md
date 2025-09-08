@@ -19,3 +19,5 @@ Looking to add:
 - Extra metadata for headers (dates, etc)
 
 This project compiles using the MinGW toolchain.
+
+To exit safely use Ctrl-C.
