@@ -3,7 +3,7 @@
 
 typedef enum { TEXT, IMAGE } ContentType;
 
-#define NUMFILETYPES 10
+#define NUMFILETYPES 8
 typedef enum {
     FILE_DEFAULT,
     FILE_HTML,
@@ -15,14 +15,14 @@ typedef enum {
     FILE_JPG
 } FileType;
 
-const char *fileTypes[NUMFILETYPES] = {
-    [FILE_DEFAULT] = "plain", [FILE_HTML] = "html", [FILE_JS] = "javascript",
-    [FILE_CSS] = "css",       [FILE_PNG] = "png",   [FILE_BMP] = "bmp",
-    [FILE_GIF] = "gif",       [FILE_JPG] = "jpg",
-};
+extern const char *contentTypes[2];
+extern const char *fileTypes[NUMFILETYPES];
+extern const char *fileExts[NUMFILETYPES];
+
 
 char *getFileExtension(char *strStart,
                        int maxLen); // Get the file extension of a string
-FileType *getFileType(char *strStart, int maxLen); // A wrapper for the above
+FileType getFileType(char *strStart, int maxLen); // A wrapper for the above
+ContentType getContentType(FileType fileType);
 
 #endif // !FUNC_H

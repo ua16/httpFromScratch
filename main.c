@@ -236,7 +236,11 @@ DWORD WINAPI requestHandler(void *arg)
 
         // Metadata
         long fileSize = 0;
-        char fileType[32] = "image/bmp"; // Default
+        FileType fileType = FILE_DEFAULT;
+        char fileTypeStr[10];
+        char contentTypeStr[10];
+        strncpy(fileTypeStr, fileTypes[fileType], sizeof(fileTypeStr));
+        strncpy(contentTypeStr, contentTypes[TEXT], sizeof(contentTypeStr));
         // Determine if it's a valid thing ---------------#
 
         // Make sure that it contains no ..
@@ -249,8 +253,6 @@ DWORD WINAPI requestHandler(void *arg)
         if (pathname[strlen(pathname) - 1] == '/') {
             strncat(pathname, "index.html", sizeof(pathname) - 1);
         }
-
-        // Check the file types
 
         // Check if the file exists
 
@@ -265,15 +267,29 @@ DWORD WINAPI requestHandler(void *arg)
             // Return a 404 error
             validRequest = FALSE;
         }
+        // Check the file types
+        if (validRequest == TRUE) {
+            fileType = getFileType(pathname, sizeof(pathname));
+            strncpy(fileTypeStr,
+                    fileTypes[fileType],
+                    sizeof(fileTypeStr));
+            strncpy(contentTypeStr, contentTypes[getContentType(fileType)],
+                    sizeof(contentTypeStr));
+        }
 
         // Read the file ---------------------------------#
 
         char *fileInMem =
             malloc(fileSize + 10); // This will be an unterminated string
 
-        fread(fileInMem, fileSize, 1, fptr);
+        if (validRequest == TRUE) {
+            fread(fileInMem, fileSize, 1, fptr);
 
-        strcpy(fileInMem + fileSize, "\r\n\r\n");
+            // doesn't work with strncat for some reason.
+            strcpy(fileInMem + fileSize, "\r\n\r\n");
+            
+            fileSize += 4;
+        }
 
         fclose(fptr);
 
@@ -282,26 +298,22 @@ DWORD WINAPI requestHandler(void *arg)
         if (validRequest) {
             snprintf(header, headerSize,
                      "HTTP/1.1 200 OK\r\n"
-                     "Content-Type: %s\r\n"
+                     "Content-Type: %s/%s\r\n"
                      "Content-Length: %ld\r\n"
                      "Connection: Keep-Alive\r\n"
                      "\r\n",
-                     fileType, fileSize + 4);
+                     contentTypeStr, fileTypeStr, fileSize);
         } else {
             snprintf(header, headerSize,
                      "HTTP/1.1 404 Not Found\r\n"
-                     "Content-Type: %s\r\n"
-                     "Content-Length: %ld\r\n"
                      "Connection: close\r\n"
-                     "\r\n",
-                     fileType, fileSize);
+                     "\r\n");
         }
 
         // Stream the file -------------------------------#
 
         send(clientSocket, header, strlen(header), 0);
 
-        
         send(clientSocket, fileInMem, fileSize, 0);
 
         free(fileInMem);
