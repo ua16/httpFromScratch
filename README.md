@@ -9,6 +9,8 @@ features:
 
 - Multi-Threaded
 - MIME support
+- Trailing Slash Redirection to path/index.html
+- Protection from ".." file grabbing
 - That's it there's not much to an http server for static sites
 
 Looking to add:
