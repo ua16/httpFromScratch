@@ -199,6 +199,7 @@ DWORD WINAPI requestHandler(void *arg)
         if (strncmp(request + requestCurLen - 4, "\r\n\r\n", 4) == 0) {
             break;
         }
+        ZeroMemory(buffer, DEFAULT_BUFLEN + 1);
 
     } while (bytesRead > 0);
 
