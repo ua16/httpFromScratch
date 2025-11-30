@@ -324,6 +324,9 @@ DWORD WINAPI requestHandler(void *arg)
         free(fileInMem);
         free(request);
     }
+    else {
+        free(request);
+    }
 
     // Close the socket and send a FIN
     int iResult = shutdown(clientSocket, SD_SEND);
