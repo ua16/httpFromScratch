@@ -178,6 +178,7 @@ DWORD WINAPI requestHandler(void *arg)
     int requestCurLen = 0;
 
     do {
+        // Read the buffer 8 bytes at a time
         buffer[DEFAULT_BUFLEN + 1] = '\0';
         bytesRead = recv(clientSocket, buffer, DEFAULT_BUFLEN, 0);
 
@@ -207,6 +208,7 @@ DWORD WINAPI requestHandler(void *arg)
     enum RequestType requestType = UNSET;
     char pathname[400] = ".";
 
+    // Split the request by " " chars to find out what type of request it is
     char *token = strtok(request, " ");
     int tokenNo = 0;
     while (token != NULL) {
@@ -244,6 +246,7 @@ DWORD WINAPI requestHandler(void *arg)
         // Determine if it's a valid thing ---------------#
 
         // Make sure that it contains no ..
+        // This is to prevent access to files outside cwd
         if (strstr(pathname, "..") != NULL) {
             // Return a 404 error
             validRequest = FALSE;
@@ -312,8 +315,10 @@ DWORD WINAPI requestHandler(void *arg)
 
         // Stream the file -------------------------------#
 
+        // Send the header over
         send(clientSocket, header, strlen(header), 0);
 
+        // Send the file read into memory
         send(clientSocket, fileInMem, fileSize, 0);
 
         free(fileInMem);
